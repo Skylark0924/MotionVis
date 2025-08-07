@@ -18,6 +18,16 @@ class BVHVisualizer {
     this.loop = true;
     this.currentTime = 0;
     this.duration = 0;
+    this.boneNames = [];
+    this.endSiteNames = [];
+    this.objectNames = [];
+    this.boneEntries = [];
+    this.endSiteEntries = [];
+    this.orderedBoneEntries = [];
+    // highlight state
+    this.highlightMarker = null;
+    this.objectHighlightHelper = null;
+    this.objectHighlightTarget = null;
 
     this.initThree();
     this.initUI();
@@ -195,6 +205,59 @@ class BVHVisualizer {
   }
 
   /**
+   * 高亮指定名称的骨骼
+   * @param {string} name - 骨骼名称
+   */
+  highlightBoneByName(name) {
+    if (!name || !this.skeletonRoot) return false;
+    let target = null;
+    const stack = [this.skeletonRoot];
+    while (stack.length) {
+      const node = stack.pop();
+      if (node && node.name === name) {
+        target = node;
+        break;
+      }
+      if (node && node.children) stack.push(...node.children);
+    }
+    if (!target) return false;
+    this._attachHighlightMarker(target);
+    return true;
+  }
+
+  /**
+   * 清除所有高亮
+   */
+  clearHighlights() {
+    if (this.highlightMarker && this.highlightMarker.parent) {
+      this.highlightMarker.parent.remove(this.highlightMarker);
+    }
+    this.highlightMarker = null;
+    if (this.objectHighlightHelper) {
+      this.scene.remove(this.objectHighlightHelper);
+      this.objectHighlightHelper = null;
+      this.objectHighlightTarget = null;
+    }
+  }
+
+  /**
+   * 在对象上附着高亮标记
+   * @param {THREE.Object3D} object3D - 目标对象
+   */
+  _attachHighlightMarker(object3D) {
+    if (!object3D) return;
+    if (this.highlightMarker && this.highlightMarker.parent) {
+      this.highlightMarker.parent.remove(this.highlightMarker);
+    }
+    const geometry = new THREE.SphereGeometry(3, 16, 16);
+    const material = new THREE.MeshBasicMaterial({ color: 0xffd60a });
+    this.highlightMarker = new THREE.Mesh(geometry, material);
+    this.highlightMarker.name = "HighlightMarker";
+    object3D.add(this.highlightMarker);
+    this.highlightMarker.position.set(0, 0, 0);
+  }
+
+  /**
    * 格式化时间显示
    * @param {number} time - 时间（秒）
    * @returns {string} 格式化的时间字符串
@@ -234,7 +297,7 @@ class BVHVisualizer {
       if (this.skeletonRoot) {
         this.scene.remove(this.skeletonRoot);
       }
-      
+
       // 移除FBX可视化器的模型
       if (window.fbxVisualizer && window.fbxVisualizer.model) {
         this.scene.remove(window.fbxVisualizer.model);
@@ -266,12 +329,84 @@ class BVHVisualizer {
         console.log(`  ${i}: ${result.clip.tracks[i].name}`);
       }
 
-      // 存储动作信息
+      // 收集骨骼与物体名称（区分 End Site）
+      const allBones = result.skeleton.bones;
+      const isEndSite = (name) =>
+        /\b(end\s*site|site$|end\s*$)/i.test(name || "");
+      this.boneNames = [];
+      this.endSiteNames = [];
+      this.boneEntries = [];
+      this.endSiteEntries = [];
+
+      const detectSide = (name) => {
+        const n = (name || "").toLowerCase();
+        if (/left|^l[^a-z]?|\.l$|_l$|mixamorig:Left/i.test(name)) return "Left";
+        if (/right|^r[^a-z]?|\.r$|_r$|mixamorig:Right/i.test(name))
+          return "Right";
+        return "";
+      };
+      const detectFinger = (name) => {
+        const n = (name || "").toLowerCase();
+        if (/thumb/.test(n)) return "Thumb";
+        if (/index/.test(n)) return "Index";
+        if (/middle/.test(n)) return "Middle";
+        if (/ring/.test(n)) return "Ring";
+        if (/pinky|little/.test(n)) return "Pinky";
+        return "";
+      };
+      const buildEndSiteLabel = (bone) => {
+        // ascend ancestors to guess side/finger
+        let side = "";
+        let finger = "";
+        let ancestorName = "";
+        let p = bone.parent;
+        while (p) {
+          if (!side) side = detectSide(p.name);
+          if (!finger) finger = detectFinger(p.name);
+          if (!ancestorName && p.name && !isEndSite(p.name)) {
+            ancestorName = p.name;
+          }
+          if (side && finger) break;
+          p = p.parent;
+        }
+        const prefix =
+          [side, finger].filter(Boolean).join(" ") || ancestorName || "Bone";
+        return `${prefix} EndSite`;
+      };
+
+      for (let i = 0; i < allBones.length; i++) {
+        const bone = allBones[i];
+        const name = bone.name || "(未命名)";
+        const entry = { label: name, uuid: bone.uuid };
+        if (isEndSite(name)) {
+          this.endSiteNames.push(name);
+          this.endSiteEntries.push({
+            label: buildEndSiteLabel(bone),
+            uuid: bone.uuid,
+          });
+        } else {
+          this.boneNames.push(name);
+          this.boneEntries.push(entry);
+        }
+      }
+
+      // 构建按 BVH 原始顺序的合并列表（骨骼 + End Site）
+      this.orderedBoneEntries = [];
+      for (let i = 0; i < allBones.length; i++) {
+        const bone = allBones[i];
+        const raw = bone.name || "(未命名)";
+        const label = isEndSite(raw) ? buildEndSiteLabel(bone) : raw;
+        this.orderedBoneEntries.push({ index: i + 1, label, uuid: bone.uuid });
+      }
+      // BVH 一般不包含网格物体，这里保持为空
+      this.objectNames = [];
+
+      // 存储动作信息（关节数不含 End Site）
       this.motionInfo = {
         frames: result.clip.tracks[0] ? result.clip.tracks[0].times.length : 0,
         frameTime: result.clip.frameRate ? 1 / result.clip.frameRate : 0.033,
         duration: result.clip.duration,
-        joints: result.skeleton.bones.length,
+        joints: this.boneNames.length,
       };
 
       this.duration = result.clip.duration;
@@ -359,6 +494,11 @@ class BVHVisualizer {
       this.fitCameraToSkeleton(result.skeleton);
 
       this.updateStatus("BVH数据加载成功");
+
+      // 更新动作信息面板
+      if (window.updateMotionInfo) {
+        window.updateMotionInfo(this.getMotionInfo());
+      }
     } catch (error) {
       console.error("BVH数据加载失败:", error);
       this.updateStatus("BVH数据加载失败: " + error.message);
@@ -457,6 +597,68 @@ class BVHVisualizer {
    */
   getMotionInfo() {
     return this.motionInfo;
+  }
+
+  /**
+   * 获取骨骼名称列表
+   * @returns {string[]} 骨骼名称数组
+   */
+  getBoneNames() {
+    return Array.isArray(this.boneNames) ? this.boneNames : [];
+  }
+
+  /**
+   * 返回包含唯一标识的骨骼条目
+   * @returns {{label:string, uuid:string}[]}
+   */
+  getBoneEntries() {
+    return Array.isArray(this.boneEntries) ? this.boneEntries : [];
+  }
+
+  /**
+   * 获取 End Site 名称列表
+   * @returns {string[]} End Site 名称数组
+   */
+  getEndSiteNames() {
+    return Array.isArray(this.endSiteNames) ? this.endSiteNames : [];
+  }
+
+  /**
+   * 返回包含唯一标识的 End Site 条目
+   * @returns {{label:string, uuid:string}[]}
+   */
+  getEndSiteEntries() {
+    return Array.isArray(this.endSiteEntries) ? this.endSiteEntries : [];
+  }
+
+  /**
+   * 获取按文件原始顺序编号的骨骼/End Site 合并列表
+   * @returns {{index:number,label:string,uuid:string}[]}
+   */
+  getOrderedBoneEntries() {
+    return Array.isArray(this.orderedBoneEntries)
+      ? this.orderedBoneEntries
+      : [];
+  }
+
+  /**
+   * 通过UUID高亮骨骼
+   * @param {string} uuid - 目标骨骼UUID
+   */
+  highlightBoneByUUID(uuid) {
+    if (!uuid) return false;
+    const target = this.scene.getObjectByProperty("uuid", uuid);
+    if (!target) return false;
+    this._attachHighlightMarker(target);
+    return true;
+  }
+
+  /**
+   * 获取物体名称列表
+   * @returns {string[]} 物体名称数组
+   */
+  getObjectNames() {
+    return Array.isArray(this.objectNames) ? this.objectNames : [];
   }
 
   /**

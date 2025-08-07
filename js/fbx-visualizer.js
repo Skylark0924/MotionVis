@@ -19,6 +19,16 @@ class FBXVisualizer {
     this.currentTime = 0;
     this.duration = 0;
     this.model = null;
+    this.boneNames = [];
+    this.objectNames = [];
+    // highlight state
+    this.objectHighlightHelper = null;
+    this.objectHighlightTarget = null;
+    // skin visibility & helpers
+    this.skinVisible = true;
+    this.skeletonHelper = null;
+    // skin visibility
+    this.skinVisible = true;
 
     this.initThree();
     this.initUI();
@@ -180,7 +190,11 @@ class FBXVisualizer {
         this.scene.remove(this.model);
         this.model = null;
       }
-      
+      if (this.skeletonHelper) {
+        this.scene.remove(this.skeletonHelper);
+        this.skeletonHelper = null;
+      }
+
       // 移除BVH可视化器的骨骼
       if (window.bvhVisualizer) {
         if (window.bvhVisualizer.skeletonHelper) {
@@ -202,10 +216,15 @@ class FBXVisualizer {
         url,
         (object) => {
           console.log("FBX文件加载成功:", object);
-          
+
           // 存储模型
           this.model = object;
           this.scene.add(object);
+          // 应用当前蒙皮可见性与骨架可视
+          this.setSkinVisible(this.skinVisible);
+
+          // 应用当前蒙皮可见性
+          this.setSkinVisible(this.skinVisible);
 
           // 获取动画信息
           if (object.animations && object.animations.length > 0) {
@@ -220,8 +239,14 @@ class FBXVisualizer {
 
             // 存储动作信息
             this.motionInfo = {
-              frames: animation.tracks[0] ? animation.tracks[0].times.length : 0,
-              frameTime: animation.duration > 0 ? animation.duration / (animation.tracks[0] ? animation.tracks[0].times.length : 1) : 0.033,
+              frames: animation.tracks[0]
+                ? animation.tracks[0].times.length
+                : 0,
+              frameTime:
+                animation.duration > 0
+                  ? animation.duration /
+                    (animation.tracks[0] ? animation.tracks[0].times.length : 1)
+                  : 0.033,
               duration: animation.duration,
               joints: this.countJoints(object),
             };
@@ -237,6 +262,38 @@ class FBXVisualizer {
             };
           }
 
+          // 收集骨骼（按遍历顺序，基于 uuid 与 名称 双重去重）
+          this.boneNames = [];
+          this.boneEntries = [];
+          this.orderedBoneEntries = [];
+          const uuidSeen = new Set();
+          const nameSeen = new Set();
+          object.traverse((child) => {
+            if (!child.isBone) return;
+            const uuid = child.uuid;
+            const rawName = child.name || "(未命名)";
+            const nameKey = rawName.toLowerCase();
+            if (uuidSeen.has(uuid) || nameSeen.has(nameKey)) return;
+            uuidSeen.add(uuid);
+            nameSeen.add(nameKey);
+            const label = rawName;
+            this.boneNames.push(label);
+            this.boneEntries.push({ label, uuid });
+            this.orderedBoneEntries.push({
+              index: this.orderedBoneEntries.length + 1,
+              label,
+              uuid,
+            });
+          });
+
+          // 收集物体名称（可见网格/组）
+          this.objectNames = [];
+          object.traverse((child) => {
+            if (child.isMesh || child.type === "Group") {
+              this.objectNames.push(child.name || child.type);
+            }
+          });
+
           // 自动调整相机以适应模型
           this.fitCameraToModel(object);
 
@@ -251,7 +308,12 @@ class FBXVisualizer {
           }
 
           this.updateStatus("FBX文件加载成功");
-          
+
+          // 更新动作信息面板
+          if (window.updateMotionInfo) {
+            window.updateMotionInfo(this.getMotionInfo());
+          }
+
           // 清理URL
           URL.revokeObjectURL(url);
         },
@@ -265,7 +327,6 @@ class FBXVisualizer {
           URL.revokeObjectURL(url);
         }
       );
-
     } catch (error) {
       console.error("FBX文件加载失败:", error);
       this.updateStatus("FBX文件加载失败: " + error.message);
@@ -306,7 +367,11 @@ class FBXVisualizer {
     const maxDim = Math.max(size.x, size.y, size.z);
     const distance = maxDim * 3;
 
-    this.camera.position.set(center.x, center.y + distance, center.z + distance);
+    this.camera.position.set(
+      center.x,
+      center.y + distance,
+      center.z + distance
+    );
     this.controls.target.copy(center);
     this.controls.update();
   }
@@ -376,6 +441,106 @@ class FBXVisualizer {
    */
   getMotionInfo() {
     return this.motionInfo;
+  }
+
+  /**
+   * 获取骨骼名称列表
+   * @returns {string[]} 骨骼名称数组
+   */
+  getBoneNames() {
+    return Array.isArray(this.boneNames) ? this.boneNames : [];
+  }
+
+  /**
+   * 获取包含唯一标识的骨骼条目
+   * @returns {{label:string, uuid:string}[]}
+   */
+  getBoneEntries() {
+    return Array.isArray(this.boneEntries) ? this.boneEntries : [];
+  }
+
+  /**
+   * 获取按遍历顺序编号的骨骼条目
+   * @returns {{index:number,label:string,uuid:string}[]}
+   */
+  getOrderedBoneEntries() {
+    return Array.isArray(this.orderedBoneEntries)
+      ? this.orderedBoneEntries
+      : [];
+  }
+
+  /**
+   * 获取物体名称列表
+   * @returns {string[]} 物体名称数组
+   */
+  getObjectNames() {
+    return Array.isArray(this.objectNames) ? this.objectNames : [];
+  }
+
+  /**
+   * 设置蒙皮可见性（SMPL/网格）
+   * @param {boolean} visible - 是否可见
+   */
+  setSkinVisible(visible) {
+    this.skinVisible = !!visible;
+    if (!this.model) return;
+    this.model.traverse((child) => {
+      if (child.isMesh) {
+        child.visible = this.skinVisible;
+      }
+    });
+
+    // 切换骨架可视化：隐藏蒙皮时显示骨架，显示蒙皮时移除骨架
+    if (!this.skinVisible) {
+      if (!this.skeletonHelper) {
+        // 尝试找到含有骨架的根对象
+        let skinnedRoot = this.model;
+        this.skeletonHelper = new THREE.SkeletonHelper(skinnedRoot);
+        this.skeletonHelper.material.linewidth = 2;
+        this.skeletonHelper.material.color.setHex(0x00ff00);
+        this.scene.add(this.skeletonHelper);
+      }
+    } else if (this.skeletonHelper) {
+      this.scene.remove(this.skeletonHelper);
+      this.skeletonHelper = null;
+    }
+  }
+
+  /**
+   * 高亮指定名称的物体
+   * @param {string} name - 物体名称
+   */
+  highlightObjectByName(name) {
+    if (!name || !this.model) return false;
+    let target = null;
+    this.model.traverse((child) => {
+      if (
+        !target &&
+        (child.isMesh || child.type === "Group") &&
+        child.name === name
+      ) {
+        target = child;
+      }
+    });
+    if (!target) return false;
+    // 清理旧helper
+    if (this.objectHighlightHelper) {
+      this.scene.remove(this.objectHighlightHelper);
+    }
+    this.objectHighlightTarget = target;
+    const box = new THREE.Box3().setFromObject(target);
+    this.objectHighlightHelper = new THREE.Box3Helper(box, 0xffd60a);
+    this.scene.add(this.objectHighlightHelper);
+    return true;
+  }
+
+  /** 清除高亮 */
+  clearHighlights() {
+    if (this.objectHighlightHelper) {
+      this.scene.remove(this.objectHighlightHelper);
+      this.objectHighlightHelper = null;
+      this.objectHighlightTarget = null;
+    }
   }
 
   /**
