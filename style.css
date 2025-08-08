@@ -9,12 +9,13 @@
   --accent: #0a84ff;
   --danger: #ff3b30;
   --bg: #ffffff;
-  --bg-elevated: #ffffffcc; /* translucent */
+  --bg-elevated: #ffffffcc;
+  /* translucent */
   --canvas-bg: #ffffff;
   --text: #1d1d1f;
   --text-muted: #6e6e73;
-  --border: rgba(0,0,0,0.08);
-  --shadow: 0 8px 30px rgba(0,0,0,0.08);
+  --border: rgba(0, 0, 0, 0.08);
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
   --radius: 12px;
 }
 
@@ -23,12 +24,13 @@
     --accent: #0a84ff;
     --danger: #ff453a;
     --bg: #0b0b0c;
-    --bg-elevated: #1c1c1e99; /* translucent dark */
+    --bg-elevated: #1c1c1e99;
+    /* translucent dark */
     --canvas-bg: #0b0b0c;
     --text: #f5f5f7;
     --text-muted: #9b9ba1;
-    --border: rgba(255,255,255,0.12);
-    --shadow: 0 10px 40px rgba(0,0,0,0.45);
+    --border: rgba(255, 255, 255, 0.12);
+    --shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
   }
 }
 
@@ -38,7 +40,7 @@
   --canvas-bg: #ffffff;
   --text: #1d1d1f;
   --text-muted: #6e6e73;
-  --border: rgba(0,0,0,0.08);
+  --border: rgba(0, 0, 0, 0.08);
   --bg-elevated: #ffffffcc;
 }
 
@@ -47,7 +49,7 @@
   --canvas-bg: #0b0b0c;
   --text: #f5f5f7;
   --text-muted: #9b9ba1;
-  --border: rgba(255,255,255,0.12);
+  --border: rgba(255, 255, 255, 0.12);
   --bg-elevated: #1c1c1e99;
 }
 
@@ -62,10 +64,22 @@ body {
 }
 
 /* Typography normalization: ensure all UI controls inherit the same font */
-button, input, select, textarea, label, summary, details,
-.drop-zone, .info-list, .file-info, .status-display,
-.keyboard-shortcuts, .keyboard-shortcuts kbd,
-.sidebar h1, .sidebar h2, .sidebar h3 {
+button,
+input,
+select,
+textarea,
+label,
+summary,
+details,
+.drop-zone,
+.info-list,
+.file-info,
+.status-display,
+.keyboard-shortcuts,
+.keyboard-shortcuts kbd,
+.sidebar h1,
+.sidebar h2,
+.sidebar h3 {
   font-family: inherit;
 }
 
@@ -91,6 +105,15 @@ button, input, select, textarea, label, summary, details,
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 12px;
+}
+
+.header-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  align-items: flex-end;
+  justify-content: flex-start;
+  height: auto;
 }
 
 .sidebar h1 {
@@ -126,13 +149,15 @@ button, input, select, textarea, label, summary, details,
 
 .visually-hidden {
   position: absolute !important;
-  height: 1px; width: 1px;
+  height: 1px;
+  width: 1px;
   overflow: hidden;
   clip: rect(1px, 1px, 1px, 1px);
   white-space: nowrap;
   clip-path: inset(50%);
   border: 0;
-  padding: 0; margin: 0;
+  padding: 0;
+  margin: 0;
 }
 
 .button-secondary {
@@ -142,7 +167,7 @@ button, input, select, textarea, label, summary, details,
   height: 36px;
   padding: 0 14px;
   margin-top: 10px;
-  background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(255,255,255,0.7));
+  background: var(--bg-elevated);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -214,16 +239,16 @@ button {
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.01em;
-  box-shadow: 0 6px 16px rgba(10,132,255,0.25);
+  box-shadow: 0 6px 16px rgba(10, 132, 255, 0.25);
   transition: transform 0.08s ease, box-shadow 0.2s ease, filter 0.2s ease;
 }
 
 .icon-button {
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
   padding: 0;
-  border-radius: 10px;
-  font-size: 16px;
+  border-radius: 8px;
+  font-size: 14px;
   line-height: 1;
   background: var(--bg-elevated);
   color: var(--text);
@@ -233,12 +258,12 @@ button {
 
 button:hover {
   filter: brightness(1.05);
-  box-shadow: 0 10px 24px rgba(10,132,255,0.35);
+  box-shadow: 0 10px 24px rgba(10, 132, 255, 0.35);
 }
 
 button:active {
   transform: translateY(1px);
-  box-shadow: 0 4px 12px rgba(10,132,255,0.25);
+  box-shadow: 0 4px 12px rgba(10, 132, 255, 0.25);
 }
 
 button:focus-visible {
@@ -249,12 +274,12 @@ button:focus-visible {
 #stop-button {
   background: linear-gradient(180deg, color-mix(in oklab, var(--danger) 88%, white 12%), var(--danger));
   border-color: color-mix(in oklab, var(--danger) 80%, black 20%);
-  box-shadow: 0 6px 16px rgba(255,59,48,0.25);
+  box-shadow: 0 6px 16px rgba(255, 59, 48, 0.25);
 }
 
 #stop-button:hover {
   filter: brightness(1.05);
-  box-shadow: 0 10px 24px rgba(255,59,48,0.35);
+  box-shadow: 0 10px 24px rgba(255, 59, 48, 0.35);
 }
 
 .slider-container {
@@ -318,7 +343,7 @@ button:focus-visible {
   height: 18px;
   border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 2px 8px rgba(10,132,255,0.35), 0 0 0 1px color-mix(in oklab, var(--accent) 40%, black 10%) inset;
+  box-shadow: 0 2px 8px rgba(10, 132, 255, 0.35), 0 0 0 1px color-mix(in oklab, var(--accent) 40%, black 10%) inset;
   cursor: pointer;
 }
 
@@ -401,7 +426,7 @@ button:focus-visible {
   margin-top: 8px;
 }
 
-.collapsible > summary {
+.collapsible>summary {
   cursor: pointer;
   list-style: none;
   color: var(--text);
@@ -409,11 +434,11 @@ button:focus-visible {
   padding: 6px 8px;
   border-radius: 8px;
   border: 1px solid var(--border);
-  background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(255,255,255,0.65));
+  background: var(--bg-elevated);
 }
 
-.collapsible[open] > summary {
-  background: color-mix(in oklab, var(--accent) 6%, rgba(255,255,255,0.85));
+.collapsible[open]>summary {
+  background: color-mix(in oklab, var(--accent) 6%, var(--bg-elevated));
 }
 
 .info-list {
@@ -476,49 +501,73 @@ button:focus-visible {
   font-weight: 600;
 }
 
-/* Keyboard shortcuts */
-.keyboard-shortcuts {
-  margin-top: 16px;
-  padding: 14px 16px;
-  background: var(--bg-elevated);
-  border-radius: var(--radius);
+/* Help tooltip */
+.header-buttons {
+  position: relative;
+}
+
+.tooltip-content {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 8px;
+  padding: 16px;
+  background: var(--bg);
   border: 1px solid var(--border);
+  border-radius: var(--radius);
   box-shadow: var(--shadow);
+  min-width: 200px;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.2s ease;
+  z-index: 1000;
 }
 
-.keyboard-shortcuts h3 {
+#help-button:hover+.tooltip-content {
+  opacity: 1;
+  visibility: visible;
+}
+
+.tooltip-content h3 {
+  margin-bottom: 12px;
+  font-size: 14px;
+  font-weight: 600;
   color: var(--text-muted);
-  margin-bottom: 8px;
 }
 
-.keyboard-shortcuts ul {
+.tooltip-content ul {
   list-style: none;
+  margin: 0;
+  padding: 0;
   font-size: 12px;
 }
 
-.keyboard-shortcuts li {
+.tooltip-content li {
   margin: 3px 0;
   color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.keyboard-shortcuts kbd {
+.tooltip-content kbd {
   display: inline-block;
   min-width: 18px;
   text-align: center;
-  background: linear-gradient(180deg, rgba(255,255,255,0.85), rgba(255,255,255,0.65));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.65));
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 2px 6px;
   font-size: 11px;
   line-height: 1.4;
-  box-shadow: inset 0 -1px 0 rgba(0,0,0,0.08);
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.08);
 }
 
 @media (prefers-color-scheme: dark) {
-  .keyboard-shortcuts kbd {
+  .tooltip-content kbd {
     background: linear-gradient(180deg, #2b2b2f, #1e1e22);
     color: #f5f5f7;
-    box-shadow: inset 0 -1px 0 rgba(255,255,255,0.06);
+    box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.06);
   }
 }

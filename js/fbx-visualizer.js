@@ -141,6 +141,9 @@ class FBXVisualizer {
         this.mixer.update(0);
       }
     }
+
+    // 更新物体高亮边界框位置
+    this._updateBoundingBoxHighlight();
   }
 
   /**
@@ -220,6 +223,12 @@ class FBXVisualizer {
           // 存储模型
           this.model = object;
           this.scene.add(object);
+          // 确保世界矩阵最新，避免包围盒/尺寸异常
+          try {
+            object.updateMatrixWorld(true);
+          } catch (e) {
+            console.warn("updateMatrixWorld 失败:", e);
+          }
           // 应用当前蒙皮可见性与骨架可视
           this.setSkinVisible(this.skinVisible);
 
@@ -234,7 +243,8 @@ class FBXVisualizer {
             // 创建动画混合器
             this.mixer = new THREE.AnimationMixer(object);
             this.action = this.mixer.clipAction(animation);
-            this.action.setLoop(THREE.LoopRepeat);
+            this.action.setLoop(this.loop ? THREE.LoopRepeat : THREE.LoopOnce);
+            this.action.clampWhenFinished = true;
             this.action.play();
 
             // 存储动作信息
@@ -245,7 +255,7 @@ class FBXVisualizer {
               frameTime:
                 animation.duration > 0
                   ? animation.duration /
-                    (animation.tracks[0] ? animation.tracks[0].times.length : 1)
+                  (animation.tracks[0] ? animation.tracks[0].times.length : 1)
                   : 0.033,
               duration: animation.duration,
               joints: this.countJoints(object),
@@ -285,6 +295,29 @@ class FBXVisualizer {
               uuid,
             });
           });
+          // 回退：如果未找到 Bone 节点，则尝试从 SkinnedMesh 的 skeleton 中提取
+          if (this.boneEntries.length === 0) {
+            const skinnedBones = new Map();
+            object.traverse((child) => {
+              if (child.isSkinnedMesh && child.skeleton && child.skeleton.bones) {
+                child.skeleton.bones.forEach((b) => {
+                  if (!b) return;
+                  const uuid = b.uuid;
+                  const rawName = b.name || "(未命名)";
+                  const nameKey = rawName.toLowerCase();
+                  if (skinnedBones.has(uuid) || nameSeen.has(nameKey)) return;
+                  skinnedBones.set(uuid, rawName);
+                });
+              }
+            });
+            let index = 1;
+            for (const [uuid, rawName] of skinnedBones.entries()) {
+              const label = rawName;
+              this.boneNames.push(label);
+              this.boneEntries.push({ label, uuid });
+              this.orderedBoneEntries.push({ index: index++, label, uuid });
+            }
+          }
 
           // 收集物体名称（可见网格/组）
           this.objectNames = [];
@@ -318,7 +351,10 @@ class FBXVisualizer {
           URL.revokeObjectURL(url);
         },
         (progress) => {
-          const percent = (progress.loaded / progress.total) * 100;
+          let percent = 0;
+          if (progress && typeof progress.loaded === "number" && progress.total) {
+            percent = (progress.loaded / progress.total) * 100;
+          }
           this.updateStatus(`加载中... ${percent.toFixed(1)}%`);
         },
         (error) => {
@@ -355,6 +391,11 @@ class FBXVisualizer {
   fitCameraToModel(object) {
     // 计算模型的边界框
     const box = new THREE.Box3();
+    try {
+      object.updateMatrixWorld(true);
+    } catch (e) {
+      console.warn("updateMatrixWorld 失败:", e);
+    }
     box.setFromObject(object);
 
     const center = new THREE.Vector3();
@@ -363,17 +404,31 @@ class FBXVisualizer {
     const size = new THREE.Vector3();
     box.getSize(size);
 
-    // 根据模型大小调整相机位置
-    const maxDim = Math.max(size.x, size.y, size.z);
+    // 根据模型大小调整相机位置与裁剪面
+    let maxDim = Math.max(size.x, size.y, size.z);
+    if (!isFinite(maxDim) || maxDim <= 0) {
+      maxDim = 100; // 合理缺省
+    }
     const distance = maxDim * 3;
 
-    this.camera.position.set(
-      center.x,
-      center.y + distance,
-      center.z + distance
-    );
-    this.controls.target.copy(center);
-    this.controls.update();
+    const offset = new THREE.Vector3(0.5, 0.7, 0.7)
+      .normalize()
+      .multiplyScalar(distance);
+    this.camera.position.copy(center.clone().add(offset));
+
+    // 调整裁剪面，避免过远/过近导致的裁剪或深度失真
+    const near = Math.max(0.01, distance / 100);
+    const far = Math.max(near * 1000, distance * 10);
+    this.camera.near = near;
+    this.camera.far = far;
+    this.camera.updateProjectionMatrix();
+
+    if (this.controls) {
+      this.controls.target.copy(center);
+      this.controls.maxDistance = far * 0.9;
+      this.controls.minDistance = Math.min(10, near * 10);
+      this.controls.update();
+    }
   }
 
   /**
@@ -485,7 +540,8 @@ class FBXVisualizer {
     this.skinVisible = !!visible;
     if (!this.model) return;
     this.model.traverse((child) => {
-      if (child.isMesh) {
+      // 只隐藏/显示蒙皮网格，保留其他物体
+      if (child.isSkinnedMesh) {
         child.visible = this.skinVisible;
       }
     });
@@ -523,24 +579,57 @@ class FBXVisualizer {
       }
     });
     if (!target) return false;
-    // 清理旧helper
+
+    // 清理旧的高亮
+    this.clearHighlights();
+
+    // 创建跟随运动的边界框高亮
+    this._createBoundingBoxHighlight(target);
+    return true;
+  }
+
+  /**
+   * 创建跟随运动的边界框高亮
+   * @param {THREE.Object3D} object3D - 目标对象
+   */
+  _createBoundingBoxHighlight(object3D) {
+    if (!object3D) return;
+
+    // 清理旧标记
     if (this.objectHighlightHelper) {
       this.scene.remove(this.objectHighlightHelper);
     }
-    this.objectHighlightTarget = target;
-    const box = new THREE.Box3().setFromObject(target);
+
+    // 创建边界框辅助对象
+    const box = new THREE.Box3().setFromObject(object3D);
     this.objectHighlightHelper = new THREE.Box3Helper(box, 0xffd60a);
+    this.objectHighlightHelper.name = "ObjectBoundingBoxHighlight";
+
+    // 将边界框添加到场景中
     this.scene.add(this.objectHighlightHelper);
-    return true;
+    this.objectHighlightTarget = object3D;
+  }
+
+  /**
+   * 更新边界框高亮位置
+   */
+  _updateBoundingBoxHighlight() {
+    if (this.objectHighlightHelper && this.objectHighlightTarget) {
+      // 重新计算目标对象的边界框
+      const box = new THREE.Box3().setFromObject(this.objectHighlightTarget);
+
+      // 更新边界框辅助对象的位置和大小
+      this.objectHighlightHelper.box.copy(box);
+    }
   }
 
   /** 清除高亮 */
   clearHighlights() {
     if (this.objectHighlightHelper) {
       this.scene.remove(this.objectHighlightHelper);
-      this.objectHighlightHelper = null;
-      this.objectHighlightTarget = null;
     }
+    this.objectHighlightHelper = null;
+    this.objectHighlightTarget = null;
   }
 
   /**

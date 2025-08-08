@@ -1,19 +1,34 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light dark">
     <meta name="theme-color" content="#0a84ff">
-    <title>MotionVis 动作数据可视化</title>
+    <title>HumanVis 动作数据可视化</title>
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
     <div class="container">
         <div class="sidebar">
             <div class="sidebar-header">
-                <h1>MotionVis<br>动作数据可视化</h1>
-                <button id="theme-toggle" class="icon-button" aria-label="切换主题" title="切换主题">🌙</button>
+                <h1>HumanVis<br>动作数据可视化</h1>
+                <div class="header-buttons">
+                    <button id="theme-toggle" class="icon-button" aria-label="切换主题" title="切换主题"
+                        style="margin-bottom: 8px;">🌙</button>
+                    <button id="help-button" class="icon-button" aria-label="键盘快捷键" title="键盘快捷键">❓</button>
+                    <div class="tooltip-content">
+                        <h3>键盘快捷键</h3>
+                        <ul>
+                            <li><kbd>空格</kbd> 播放/暂停</li>
+                            <li><kbd>Ctrl+S</kbd> 停止</li>
+                            <li><kbd>←</kbd> 后退1秒</li>
+                            <li><kbd>→</kbd> 前进1秒</li>
+                        </ul>
+                    </div>
+                </div>
             </div>
             <div class="file-input">
                 <label for="file-input">选择文件 (BVH/FBX):</label>
@@ -34,27 +49,21 @@
             </div>
             <div id="file-info-panel">
                 <h2>文件信息</h2>
-                <div id="file-info"><p>未加载数据</p></div>
+                <div id="file-info">
+                    <p>未加载数据</p>
+                </div>
             </div>
             <div id="info-panel">
                 <h2>动作信息</h2>
                 <div id="motion-info"></div>
             </div>
-            <div class="keyboard-shortcuts">
-                <h3>键盘快捷键</h3>
-                <ul>
-                    <li><kbd>空格</kbd> 播放/暂停</li>
-                    <li><kbd>Ctrl+S</kbd> 停止</li>
-                    <li><kbd>←</kbd> 后退1秒</li>
-                    <li><kbd>→</kbd> 前进1秒</li>
-                </ul>
-            </div>
+
         </div>
         <div id="canvas-container"></div>
     </div>
-    
+
     <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
-    <script src="fflate-0.8.2/umd/index.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
     <script src="js/OrbitControls.js"></script>
     <script src="js/BVHLoader.js"></script>
     <script src="js/FBXLoader.js"></script>
@@ -62,4 +71,5 @@
     <script src="js/fbx-visualizer.js"></script>
     <script src="js/main.js"></script>
 </body>
+
 </html>
