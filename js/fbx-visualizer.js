@@ -29,6 +29,13 @@ class FBXVisualizer {
     this.skeletonHelper = null;
     // skin visibility
     this.skinVisible = true;
+    // vertex overlays for non-skinned meshes when skin is hidden
+    this.vertexOverlays = [];
+    // coordinate system and ground grid
+    this.coordinateSystem = null;
+    this.axesVisible = true;
+    this.groundGrid = null;
+    this.groundVisible = true;
 
     this.initThree();
     this.initUI();
@@ -56,6 +63,9 @@ class FBXVisualizer {
       }
 
       console.log("FBX可视化器初始化完成");
+
+      // Bind to existing helpers in the shared scene (created by BVH visualizer)
+      this._bindExistingHelpers();
     } catch (error) {
       console.error("FBX可视化器初始化失败:", error);
       this.updateStatus("FBX可视化器初始化失败: " + error.message);
@@ -144,6 +154,9 @@ class FBXVisualizer {
 
     // 更新物体高亮边界框位置
     this._updateBoundingBoxHighlight();
+
+    // 更新顶点覆盖以跟随源对象
+    this._updateVertexOverlays();
   }
 
   /**
@@ -255,7 +268,7 @@ class FBXVisualizer {
               frameTime:
                 animation.duration > 0
                   ? animation.duration /
-                  (animation.tracks[0] ? animation.tracks[0].times.length : 1)
+                    (animation.tracks[0] ? animation.tracks[0].times.length : 1)
                   : 0.033,
               duration: animation.duration,
               joints: this.countJoints(object),
@@ -299,7 +312,11 @@ class FBXVisualizer {
           if (this.boneEntries.length === 0) {
             const skinnedBones = new Map();
             object.traverse((child) => {
-              if (child.isSkinnedMesh && child.skeleton && child.skeleton.bones) {
+              if (
+                child.isSkinnedMesh &&
+                child.skeleton &&
+                child.skeleton.bones
+              ) {
                 child.skeleton.bones.forEach((b) => {
                   if (!b) return;
                   const uuid = b.uuid;
@@ -350,13 +367,17 @@ class FBXVisualizer {
           // 清理URL
           URL.revokeObjectURL(url);
         },
-        (progress) => {
-          let percent = 0;
-          if (progress && typeof progress.loaded === "number" && progress.total) {
-            percent = (progress.loaded / progress.total) * 100;
-          }
-          this.updateStatus(`加载中... ${percent.toFixed(1)}%`);
-        },
+          (progress) => {
+            let percent = 0;
+            if (
+              progress &&
+              typeof progress.loaded === "number" &&
+              progress.total
+            ) {
+              percent = (progress.loaded / progress.total) * 100;
+            }
+            this.updateStatus(`加载中... ${percent.toFixed(1)}%`);
+          },
         (error) => {
           console.error("FBX文件加载失败:", error);
           this.updateStatus("FBX文件加载失败: " + error.message);
@@ -552,14 +573,123 @@ class FBXVisualizer {
         // 尝试找到含有骨架的根对象
         let skinnedRoot = this.model;
         this.skeletonHelper = new THREE.SkeletonHelper(skinnedRoot);
-        this.skeletonHelper.material.linewidth = 2;
+        this.skeletonHelper.material.linewidth = 6;
         this.skeletonHelper.material.color.setHex(0x00ff00);
         this.scene.add(this.skeletonHelper);
       }
+
+      // 隐藏非蒙皮网格并显示为顶点
+      if (!this.vertexOverlays || this.vertexOverlays.length === 0) {
+        this._createVertexOverlays();
+      }
+      this._setNonSkinnedMeshesVisible(false);
     } else if (this.skeletonHelper) {
       this.scene.remove(this.skeletonHelper);
       this.skeletonHelper = null;
+
+      // 恢复非蒙皮网格可见并移除顶点覆盖
+      this._setNonSkinnedMeshesVisible(true);
+      this._removeVertexOverlays();
     }
+  }
+
+  /**
+   * Create vertex overlays (THREE.Points) and edge overlays (THREE.LineSegments) for non-skinned meshes when skin is hidden.
+   * :return: void
+   */
+  _createVertexOverlays() {
+    if (!this.model) return;
+    this.vertexOverlays = [];
+    // Traverse model and create Points and LineSegments overlays for each non-skinned mesh
+    this.model.traverse((child) => {
+      if (child.isMesh && !child.isSkinnedMesh && child.geometry) {
+        try {
+          // Ensure world matrix is up to date
+          child.updateWorldMatrix(true, false);
+
+                    // Create vertex points overlay
+          const pointsMaterial = new THREE.PointsMaterial({
+            size: 0.002,
+            sizeAttenuation: true,
+            color: this._getVertexColorForTheme(),
+          });
+          const points = new THREE.Points(child.geometry, pointsMaterial);
+          points.name = "VertexOverlay";
+          points.matrixAutoUpdate = false;
+          points.matrix.copy(child.matrixWorld);
+          
+          // Create edge lines overlay
+          const edgesGeometry = new THREE.EdgesGeometry(child.geometry);
+          const linesMaterial = new THREE.LineBasicMaterial({
+            color: this._getEdgeColorForTheme(),
+            linewidth: 1,
+          });
+          const lines = new THREE.LineSegments(edgesGeometry, linesMaterial);
+          lines.name = "EdgeOverlay";
+          lines.matrixAutoUpdate = false;
+          lines.matrix.copy(child.matrixWorld);
+
+          // Add both overlays to scene root to avoid being hidden with the source mesh
+          this.scene.add(points);
+          this.scene.add(lines);
+          this.vertexOverlays.push({ points, lines, source: child });
+        } catch (e) {
+          console.warn("Failed to create vertex/edge overlay:", e);
+        }
+      }
+    });
+  }
+
+  /**
+   * Remove all vertex and edge overlays from the scene.
+   * :return: void
+   */
+  _removeVertexOverlays() {
+    if (!this.vertexOverlays) return;
+    for (const item of this.vertexOverlays) {
+      if (item && item.points && item.points.parent) {
+        this.scene.remove(item.points);
+      }
+      if (item && item.lines && item.lines.parent) {
+        this.scene.remove(item.lines);
+      }
+    }
+    this.vertexOverlays = [];
+  }
+
+  /**
+   * Update vertex and edge overlays to follow their source meshes transforms.
+   * :return: void
+   */
+  _updateVertexOverlays() {
+    if (!this.vertexOverlays || this.vertexOverlays.length === 0) return;
+    for (const item of this.vertexOverlays) {
+      const source = item.source;
+      const points = item.points;
+      const lines = item.lines;
+      if (!source || !points || !lines) continue;
+      try {
+        source.updateWorldMatrix(true, false);
+        points.matrix.copy(source.matrixWorld);
+        lines.matrix.copy(source.matrixWorld);
+      } catch (e) {
+        // ignore per-frame errors
+      }
+    }
+  }
+
+  /**
+   * Set visibility for all non-skinned meshes in current model.
+   * :param visible, boolean: desired visibility state
+   * :return: void
+   */
+  _setNonSkinnedMeshesVisible(visible) {
+    if (!this.model) return;
+    this.model.traverse((child) => {
+      if (child.isMesh && !child.isSkinnedMesh) {
+        child.visible = !!visible;
+      }
+    });
   }
 
   /**
@@ -644,6 +774,173 @@ class FBXVisualizer {
         this.container.clientWidth,
         this.container.clientHeight
       );
+    }
+  }
+
+  /**
+   * Bind to existing coordinate system and ground grid helpers in the shared scene.
+   * :return: void
+   */
+  _bindExistingHelpers() {
+    if (!this.scene) return;
+
+    // Find existing helpers by type
+    let axesHelper = null;
+    let gridHelper = null;
+    this.scene.traverse((obj) => {
+      if (!axesHelper && obj.type === "AxesHelper") {
+        axesHelper = obj;
+      }
+      if (!gridHelper && obj.type === "GridHelper") {
+        gridHelper = obj;
+      }
+    });
+
+    // Bind to existing helpers
+    this.coordinateSystem = axesHelper;
+    this.groundGrid = gridHelper;
+
+    // Update existing grid colors to match theme
+    if (this.groundGrid) {
+      this._updateGroundGridColors();
+    }
+  }
+
+  /**
+   * Update ground grid colors to match current theme.
+   * :return: void
+   */
+  _updateGroundGridColors() {
+    if (!this.groundGrid) return;
+    const { centerColor, gridColor } = this._getGridColorsForTheme();
+    const mat = this.groundGrid.material;
+    if (Array.isArray(mat)) {
+      if (mat[0] && mat[0].color) mat[0].color.setHex(gridColor);
+      if (mat[1] && mat[1].color) mat[1].color.setHex(centerColor);
+    } else if (mat && mat.color) {
+      mat.color.setHex(gridColor);
+    }
+  }
+
+  /**
+   * Compute grid colors based on current theme.
+   * :return: {centerColor:number, gridColor:number}
+   */
+  _getGridColorsForTheme() {
+    const isDark = document.documentElement.classList.contains("theme-dark");
+    if (isDark) {
+      return { centerColor: 0x444444, gridColor: 0x2a2a2a };
+    }
+    return { centerColor: 0x888888, gridColor: 0xcccccc };
+  }
+
+  /**
+   * Toggle ground grid visibility.
+   * :param visible, boolean: desired visibility
+   * :return: void
+   */
+  setGroundVisible(visible) {
+    this.groundVisible = !!visible;
+    if (this.groundGrid) {
+      this.groundGrid.visible = this.groundVisible;
+    }
+  }
+
+  /**
+   * Toggle axes helper visibility.
+   * :param visible, boolean: desired visibility
+   * :return: void
+   */
+  setAxesVisible(visible) {
+    this.axesVisible = !!visible;
+    if (this.coordinateSystem) {
+      this.coordinateSystem.visible = this.axesVisible;
+    }
+  }
+
+  /**
+   * Get ground grid visibility.
+   * :return: boolean
+   */
+  isGroundVisible() {
+    return !!this.groundVisible;
+  }
+
+  /**
+   * Get axes helper visibility.
+   * :return: boolean
+   */
+  isAxesVisible() {
+    return !!this.axesVisible;
+  }
+
+  /**
+   * Refresh theme-driven visuals.
+   * :return: void
+   */
+  refreshTheme() {
+    this._updateGroundGridColors();
+    this._updateBackgroundColor();
+    this._updateVertexOverlayColors();
+  }
+
+  /**
+   * Update background color based on current theme.
+   * :return: void
+   */
+  _updateBackgroundColor() {
+    if (!this.scene) return;
+    const isDark = document.documentElement.classList.contains("theme-dark");
+    if (isDark) {
+      this.scene.background = new THREE.Color(0x282c34);
+    } else {
+      this.scene.background = new THREE.Color(0xf0f0f0);
+    }
+  }
+
+  /**
+   * Get vertex color based on current theme.
+   * :return: number
+   */
+  _getVertexColorForTheme() {
+    const isDark = document.documentElement.classList.contains("theme-dark");
+    if (isDark) {
+      return 0xffffff; // 深色模式：白色顶点
+    } else {
+      return 0x000000; // 浅色模式：黑色顶点
+    }
+  }
+
+  /**
+   * Get edge color based on current theme.
+   * :return: number
+   */
+  _getEdgeColorForTheme() {
+    const isDark = document.documentElement.classList.contains("theme-dark");
+    if (isDark) {
+      return 0x00ffff; // 深色模式：青色边线
+    } else {
+      return 0x333333; // 浅色模式：深灰色边线
+    }
+  }
+
+  /**
+   * Update colors of existing vertex overlays to match current theme.
+   * :return: void
+   */
+  _updateVertexOverlayColors() {
+    if (!this.vertexOverlays || this.vertexOverlays.length === 0) return;
+    
+    const vertexColor = this._getVertexColorForTheme();
+    const edgeColor = this._getEdgeColorForTheme();
+    
+    for (const item of this.vertexOverlays) {
+      if (item.points && item.points.material) {
+        item.points.material.color.setHex(vertexColor);
+      }
+      if (item.lines && item.lines.material) {
+        item.lines.material.color.setHex(edgeColor);
+      }
     }
   }
 }

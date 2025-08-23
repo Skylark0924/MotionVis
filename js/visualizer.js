@@ -42,7 +42,7 @@ class BVHVisualizer {
 
       // 创建场景
       this.scene = new THREE.Scene();
-      this.scene.background = new THREE.Color(0x282c34);
+      this._updateBackgroundColor();
 
       // 创建相机
       this.camera = new THREE.PerspectiveCamera(
@@ -674,5 +674,27 @@ class BVHVisualizer {
         this.container.clientHeight
       );
     }
+  }
+
+  /**
+   * Update background color based on current theme.
+   * :return: void
+   */
+  _updateBackgroundColor() {
+    if (!this.scene) return;
+    const isDark = document.documentElement.classList.contains("theme-dark");
+    if (isDark) {
+      this.scene.background = new THREE.Color(0x282c34);
+    } else {
+      this.scene.background = new THREE.Color(0xf0f0f0);
+    }
+  }
+
+  /**
+   * Refresh theme-driven visuals.
+   * :return: void
+   */
+  refreshTheme() {
+    this._updateBackgroundColor();
   }
 }

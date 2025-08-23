@@ -225,6 +225,34 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   controlsDiv.appendChild(skinToggle);
 
+  // 坐标系开关
+  const axesToggle = document.createElement("button");
+  axesToggle.id = "axes-toggle";
+  axesToggle.textContent = "隐藏坐标系";
+  axesToggle.addEventListener("click", () => {
+    if (!window.fbxVisualizer) return;
+    const newVisible = !window.fbxVisualizer.isAxesVisible();
+    window.fbxVisualizer.setAxesVisible(newVisible);
+    axesToggle.textContent = newVisible ? "隐藏坐标系" : "显示坐标系";
+    updateUnifiedStatus &&
+      updateUnifiedStatus(newVisible ? "坐标系可见" : "坐标系已隐藏");
+  });
+  controlsDiv.appendChild(axesToggle);
+
+  // 地面网格开关
+  const gridToggle = document.createElement("button");
+  gridToggle.id = "grid-toggle";
+  gridToggle.textContent = "隐藏地面";
+  gridToggle.addEventListener("click", () => {
+    if (!window.fbxVisualizer) return;
+    const newVisible = !window.fbxVisualizer.isGroundVisible();
+    window.fbxVisualizer.setGroundVisible(newVisible);
+    gridToggle.textContent = newVisible ? "隐藏地面" : "显示地面";
+    updateUnifiedStatus &&
+      updateUnifiedStatus(newVisible ? "地面可见" : "地面已隐藏");
+  });
+  controlsDiv.appendChild(gridToggle);
+
   // 速度控制
   const speedSlider = document.getElementById("speed-slider");
   const speedValue = document.getElementById("speed-value");
@@ -279,6 +307,14 @@ document.addEventListener("DOMContentLoaded", () => {
         updateUnifiedStatus && updateUnifiedStatus("已切换为深色模式");
       } else {
         updateUnifiedStatus && updateUnifiedStatus("已切换为浅色模式");
+      }
+
+      // 更新可视化器的主题相关元素
+      if (window.fbxVisualizer && window.fbxVisualizer.refreshTheme) {
+        window.fbxVisualizer.refreshTheme();
+      }
+      if (window.bvhVisualizer && window.bvhVisualizer.refreshTheme) {
+        window.bvhVisualizer.refreshTheme();
       }
     }
 
